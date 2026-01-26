@@ -1,0 +1,38 @@
+{
+  "name": "BuddhAI-devcontainer",
+  "runArgs": [ "--gpus", "all" ],
+  "build": {
+    "dockerfile": "Containerfile",
+    "context": ".."
+  
+
+  },
+  
+
+  
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+  "remoteUser": "vscode",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker",
+        "github.vscode-github-actions"
+      ]
+    }
+  },
+
+  "postCreateCommand": "pip install -r /workspace/app/requirements.txt",
+
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.10"
+    }
+  }
+}
