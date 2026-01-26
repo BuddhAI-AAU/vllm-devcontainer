@@ -13,7 +13,7 @@
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
 
-  "remoteUser": "vscode",
+  "remoteUser": "lumbini",
 
   "customizations": {
     "vscode": {
@@ -35,4 +35,6 @@
       "version": "3.10"
     }
   }
+
+  
 }
