@@ -13,9 +13,9 @@ while True:
         break
 
     response = client.completions.create(
-        model="allenai/OLMo-1B-hf",
+        model="mistralai/Mistral-7B-Instruct-v0.3",
         prompt=prompt,
-        max_tokens=150,
+        max_tokens=250,
         temperature=0.7
     )
 

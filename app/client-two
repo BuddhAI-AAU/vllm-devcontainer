@@ -7,6 +7,6 @@ client = OpenAI(
     api_key=openai_api_key,
     base_url=openai_api_base,
 )
-completion = client.completions.create(model="allenai/OLMo-1B-hf",
+completion = client.completions.create(model="mistralai/Mistral-7B-Instruct-v0.3",
                                       prompt="San Francisco is a")
 print("Completion result:", completion)
