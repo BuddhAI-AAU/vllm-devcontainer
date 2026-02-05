@@ -1,0 +1,46 @@
+import json
+import requests
+from sseclient import SSEClient
+
+BASE_URL = "http://localhost:9000/responses"
+#"http://localhost:8000/responses"
+
+def build_request(user_text):
+    return {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": user_text}
+                ]
+            }
+        ]
+    }
+
+while True:
+    user_text = input("You: ")
+    if not user_text.strip():
+        break
+
+    payload = build_request(user_text)
+
+    # Stream the Open Responses events
+    response = requests.post(
+        BASE_URL,
+        json=payload,
+        stream=True,
+        headers={"Accept": "text/event-stream"}
+    )
+
+    client = SSEClient(response)
+
+    print("Model: ", end="", flush=True)
+
+    for event in client.events():
+        if event.event == "response.output_text.delta":
+            data = json.loads(event.data)
+            print(data["delta"], end="", flush=True)
+
+        elif event.event == "response.completed":
+            print()  # newline
+            break

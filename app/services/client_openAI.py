@@ -15,7 +15,7 @@ while True:
     response = client.completions.create(
         model="mistralai/Mistral-7B-Instruct-v0.3",
         prompt=prompt,
-        max_tokens=250,
+        max_tokens=500,
         temperature=0.7
     )
 
