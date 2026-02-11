@@ -1,5 +1,19 @@
-FROM python:3.10
-FROM nvidia/cuda:13.0.1-devel-ubuntu22.04
+#FROM python:3.10
+#FROM nvidia/cuda:13.0.1-devel-ubuntu22.04
+
+#FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+# Install Python 3.10 and pip
+
+#RUN apt update && apt install -y \
+   # python3.10 python3.10-dev python3.10-venv python3-pip && \
+    #pip install torch --index-url https://download.pytorch.org/whl/cu121 && \
+    #ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    #pip install vllm && \
+    #ln -sf /usr/bin/pip3 /usr/bin/pip
+
+
+
+    #13.0.1-devel-ubuntu22.04
 
 # Install ubuntu keyring to avoid apt-get update errors
 #RUN apt-get update || true \
@@ -29,6 +43,40 @@ FROM nvidia/cuda:13.0.1-devel-ubuntu22.04
 
 
 # Install necessary packages
+#RUN apt update && apt install -y git curl
+
+#WORKDIR /workspace
+
+
+
+#FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+
+
+# Install Python 3.10 and tools
+#RUN apt update && apt install -y \
+    #python3.10 python3.10-dev python3.10-venv python3-pip git curl && \
+    #ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    #ln -sf /usr/bin/pip3 /usr/bin/pip
+
+#WORKDIR /workspace
+
+# Install GPU-enabled PyTorch (CUDA 12.1)
+#RUN pip install --upgrade pip && \
+ #   pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Install vLLM
+#RUN pip install vllm --timeout 1200
+
+FROM nvcr.io/nvidia/vllm:26.01-py3
+
+# Install only your own tools or dependencies
 RUN apt update && apt install -y git curl
 
 WORKDIR /workspace
+
+# Install your app dependencies (but NOT torch or vllm)
+COPY /app/requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt --no-deps
+   
+

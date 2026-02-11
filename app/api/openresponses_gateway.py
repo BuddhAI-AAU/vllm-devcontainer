@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 router = APIRouter()
 
 VLLM_URL = "http://localhost:8000/v1/completions"
-MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
+MODEL = "nvidia/Qwen3-Next-80B-A3B-Thinking-NVFP4"
 
 
 @router.post("/responses", response_class=StreamingResponse)    #opening endpoint for OpenResponses

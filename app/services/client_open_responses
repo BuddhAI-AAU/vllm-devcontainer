@@ -31,6 +31,7 @@ while True:
         stream=True,
         headers={"Accept": "text/event-stream"}
     )
+    print("TYPE:", type(response))
 
     client = SSEClient(response)
 
