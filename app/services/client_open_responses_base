@@ -1,8 +1,11 @@
 import json
 import requests
+import time
 
 BASE_URL = "http://localhost:9000/responses"
 
+
+#Open responses formatted request
 def build_request(user_text):
     return {
         "input": [
@@ -15,6 +18,7 @@ def build_request(user_text):
         ]
     }
 
+#user input loop
 while True:
     user_text = input("You: ")
     if not user_text.strip():
@@ -22,6 +26,7 @@ while True:
 
     payload = build_request(user_text)
 
+    #sends the JSON to the BASE_URL / gateway
     with requests.post(
         BASE_URL, 
         json=payload,
@@ -29,7 +34,7 @@ while True:
         
         event = None
         print("Model: ", end="", flush=True)
-
+        
         for raw in r.iter_lines(decode_unicode=True):
             if not raw:
                 continue
@@ -43,7 +48,7 @@ while True:
                 if event == "response.output_text.delta":
                     delta = json.loads(data)["delta"]
                     print(delta, end="", flush=True)
-
                 elif event == "response.completed":
-                    print()
+                    
                     break
+

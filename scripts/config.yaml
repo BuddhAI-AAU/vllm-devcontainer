@@ -1,0 +1,26 @@
+model: "nvidia/Qwen3-Next-80B-A3B-Thinking-NVFP4"
+hf-token: "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"
+port: 8000 
+#KV settings
+kv-cache-dtype: "fp8"                                  #type of the KV cache, adjust based on your GPU capabilities and model requirements. NVFP8 can provide better performance on NVIDIA GPUs that support it, while FP16 is more widely supported but may be slower.
+gpu-memory-utilization: 0.9                            #controls how much of the GPU memory to utilize. Higher values can improve performance but may lead to out-of-memory errors if set too high.
+block-size: 16                                         #Size of a contiguous cache block in number of tokens, 32 is max for CUDA devices. Larger block sizes can improve throughput but may increase memory usage and latency for small inputs.
+enable-prefix-caching: true                            #When True skip prompt prefill, latency reduction for repeated prompts, at the cost of higher memory usage.
+
+#Inference settings
+max-model-len: 1024                                    #size of context window, adjust based on your needs and GPU capabilities. More is better for longer conversations but requires more memory. Inference time is decreased with smaller values.
+tensor-parallel-size: 1                                #adjust based on your GPU setup; >1 can speed up inference if you have multiple GPUs. Leave it at 1 for the Spark
+#quantization: "Q6_K"                                  #Precicion, relevant if the model has options, otherwise keep outcommented. Higher bit values improves accuracy but requires more memory. Higher will increase inference time.
+max-num-seqs: 256                                      #controls how many sequences are generated in parallel. Inference time is decreased with higher values.
+enforce-eager: false                                   #If False, we will use CUDA graph and eager execution in hybrid for maximal performance and flexibility.
+
+
+#Scheduling settings
+max-num-batched-tokens: 1024                           #controls how many tokens are processed in parallel during generation. Inference time is lower with higher values.
+enable-chunked-prefill: true                          #enables processing the input prompt in smaller chunks, which can reduce memory usage and latency for long prompts
+
+async-scheduling: true                                 #This overlaps prefill and decode, reducing idle GPU time.
+
+
+#other settings
+cpu-offload-gb: 0                                      #stops it from offloading to CPU

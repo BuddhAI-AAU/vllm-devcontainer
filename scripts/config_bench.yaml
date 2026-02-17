@@ -1,0 +1,30 @@
+# ============================
+# vLLM Bench Serve Config
+# ============================
+
+# ---- Load generation ----
+num_prompts: 500
+request_rate: 50
+concurrency: 32
+random_seed: 42
+
+# ---- Prompt generation ----
+prompt_length: 128
+output_length: 128
+temperature: 0.7
+top_p: 0.9
+
+# ---- Dataset options ----
+dataset: "random"
+
+# ---- Warmup ----
+warmup_requests: 20
+warmup_duration: 5
+
+# ---- Logging ----
+log_interval: 10
+save_results: true
+results_path: "./bench_results.json"
+
+# ---- SLA ----
+sla_latency_ms: 2000
