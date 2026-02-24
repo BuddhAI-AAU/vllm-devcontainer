@@ -1,0 +1,62 @@
+#import json
+#import requests
+#from langgraph_node import run_chat
+
+#BASE_URL = "http://localhost:9000/responses"
+
+
+#Open responses formatted request
+def build_request(user_text):
+    return {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": user_text}
+                ]
+            }
+        ]
+    }
+
+#user input loop
+while True:
+    user_text = input("You: ")
+    if not user_text.strip():
+        break
+
+#response = run_chat("user123", user_text)
+#print("Model:", response)
+
+
+
+#inference without langgraph
+"""
+    payload = build_request(user_text)
+
+    #sends the JSON to the BASE_URL / gateway
+    with requests.post(
+        BASE_URL, 
+        json=payload,
+        stream=True) as r:
+        
+        event = None
+        print("Model: ", end="", flush=True)
+        
+        for raw in r.iter_lines(decode_unicode=True):
+            if not raw:
+                continue
+
+            if raw.startswith("event:"):
+                event = raw.split("event:")[1].strip()
+
+            elif raw.startswith("data:"):
+                data = raw.split("data:")[1].strip()
+
+                if event == "response.output_text.delta":
+                    delta = json.loads(data)["delta"]
+                    print(delta, end="", flush=True)
+                elif event == "response.completed":
+                    
+                    break
+"""
+

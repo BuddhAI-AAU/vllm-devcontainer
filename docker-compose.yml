@@ -1,0 +1,29 @@
+services:
+  redis:
+    image: redis/redis-stack-server:7.2.0-v20-arm64
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  runtime:
+    build: ./runtime
+    ports:
+      - "9000:9000"
+    depends_on:
+      - redis
+    environment:
+      - DB_URI=redis://redis:6379
+
+  dev:
+    build: .devcontainer
+    volumes:
+      - .:/workspace
+    depends_on:
+      - runtime
+      - redis
+    environment:
+      - DB_URI=redis://redis:6379
+
+volumes:
+  redis_data:

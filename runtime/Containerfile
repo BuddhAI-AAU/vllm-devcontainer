@@ -1,0 +1,16 @@
+FROM nvcr.io/nvidia/vllm:26.01-py3
+
+WORKDIR /app
+
+# Copy runtime code
+COPY app/ ./app
+COPY requirements.txt .
+COPY vllm_launcher.py .
+
+# Install runtime dependencies
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+EXPOSE 9000
+
+CMD ["python", "vllm_launcher.py"]

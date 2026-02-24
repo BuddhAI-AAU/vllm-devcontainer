@@ -1,6 +1,8 @@
 {
   "name": "BuddhAI-devcontainer",
-  "runArgs": [ "--gpus", "all" ],
+  "runArgs": [ "--gpus", "all",
+               "--network", "vllm-net"
+ ],
   "build": {
     "dockerfile": "Containerfile",
     "context": ".."
@@ -31,7 +33,7 @@
     }
   },
 
-  "postCreateCommand": "pip install -r /workspace/app/requirements.txt",
+  "postCreateCommand": "pip install -r /workspace/.devcontainer/requirements.txt",
   
   "features": {}
 
