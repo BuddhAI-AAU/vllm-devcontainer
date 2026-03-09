@@ -16,10 +16,20 @@ builder.set_finish_point("llm")
 graph = builder.compile()
 
 
-def run_chat(user_id: str, user_text: str):
+def run_chat(user_id: str, user_text: str, time_stamp: str):
+    print("\n=== CLIENT → GRAPH INPUT ===")
+    print({"user_id": user_id, "input": user_text, "time_stamp": time_stamp})
+    
+    
     result = graph.invoke({
         "user_id": user_id,
         "input": user_text,
-        "history": ""
+        "time_stamp": time_stamp,
+        "history": []
     })
+
+    print("\n=== GRAPH → CLIENT OUTPUT ===")
+    print(result)
+
     return result["response"]
+
