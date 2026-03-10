@@ -1,6 +1,5 @@
 import psycopg2
 from urllib.parse import urlparse
-#from typing import TypedDict, Optional
 from typing import TypedDict, List, Dict
 from typing import NotRequired
 DATABASE_URL = "postgresql://postgres:postgres@postgres:5432/postgres"
