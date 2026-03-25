@@ -2,6 +2,8 @@ import psycopg2
 from urllib.parse import urlparse
 from typing import TypedDict, List, Dict
 from typing import NotRequired
+from services.longterm_mem import MemoryClient
+
 DATABASE_URL = "postgresql://postgres:postgres@postgres:5432/postgres"
 
 parsed = urlparse(DATABASE_URL)
@@ -24,9 +26,11 @@ class MemoryState(TypedDict):
     user_id: str 
     input: str 
     time_stamp: str
+    #memory_client: MemoryClient #EverMemOS
     history: List[Dict[str, str]]
     payload: NotRequired[dict] 
     response: NotRequired[str]
+    retrieved_longterm: NotRequired[List[dict]]
 
 def postgres_memory_node(state: MemoryState):
 
@@ -37,10 +41,10 @@ def postgres_memory_node(state: MemoryState):
     time_stamp = state["time_stamp"]
 
 
-    # 1. Load history as structured messages
+    # 1. Load history as structured messages        added turn_id in ORDER BY
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT role, content FROM conversation_memory WHERE user_id = %s ORDER BY time_stamp ASC
+            SELECT role, content FROM conversation_memory WHERE user_id = %s ORDER BY turn_id ASC, time_stamp ASC 
 
                     """, (user_id,))
         rows = cur.fetchall()
@@ -51,15 +55,30 @@ def postgres_memory_node(state: MemoryState):
     print(history)
 
     # 2. Append the new user message
-    history.append({"role": "user", "content": user_input})
+    #history.append({"role": "user", "content": user_input})        maybe not needed due to adding it in the graph input now, we could avoid adding it twice
     
     # 3. Save the new message/insertion into SQL
-    with conn.cursor() as cur:
-        cur.execute("""
-            INSERT INTO conversation_memory (user_id, role, content, time_stamp)
-            VALUES (%s, %s, %s, %s)
-        """, (user_id, "user", user_input, time_stamp))
-        conn.commit()
+#    with conn.cursor() as cur:
+ #       cur.execute("""
+  #          INSERT INTO conversation_memory (user_id, role, content, time_stamp)
+   #         VALUES (%s, %s, %s, %s)
+    #    """, (user_id, "user", user_input, time_stamp))
+     #   conn.commit()
+
+    #remove messages older than 10
+#    with conn.cursor() as cur:
+ #       cur.execute("""
+  #          DELETE FROM conversation_memory
+   #         WHERE user_id = %s
+    #        AND time_stamp NOT IN (
+     #           SELECT time_stamp
+      #          FROM conversation_memory
+       #         WHERE user_id = %s
+        #        ORDER BY time_stamp DESC
+         #       LIMIT 10
+          #  )
+#        """, (user_id, user_id))
+#        conn.commit()
 
     print("\n=== MEMORY NODE OUTPUT ===")
     print({
@@ -72,13 +91,16 @@ def postgres_memory_node(state: MemoryState):
     return {
         "user_id": user_id,
         "input": user_input,
-        "history": history
+        "time_stamp": time_stamp,
+        "history": history,
+        #"memory_client": state["memory_client"] #EverMemOS
     }
 
 
 def prompt_builder_node(state: MemoryState):
     history = state["history"]
     user_input = state["input"]
+    #longterm = state.get("retrieved_longterm", []) #EverMemOS
 
     messages = []
 
@@ -89,6 +111,16 @@ def prompt_builder_node(state: MemoryState):
             {"type": "input_text", "text": SYSTEM_PROMPT}
         ]
     })
+
+     # Inject long-term memory
+   # if longterm:
+  #      mem_text = "\n".join([m["text"] for m in longterm])
+   #     messages.append({
+   #         "role": "system",
+    #        "content": [
+     #           {"type": "input_text", "text": f"Relevant memories:\n{mem_text}"}
+    #        ]
+    #    })
 
     # 2. Add each message from history
     for msg in history:
@@ -109,3 +141,46 @@ def prompt_builder_node(state: MemoryState):
 
     return {"payload": {"input": messages}}
 
+#Long term EverMemOS memory
+def retrieve_longterm_node(state: MemoryState):
+    client = state["memory_client"]
+
+    results = client.retrieve_memory(
+        user_id=state["user_id"],
+        query=state["input"],
+        top_k=5,
+    )
+
+    # Normalize EverMemOS structure → list of {"text": "..."}
+    normalized = []
+
+    # EverMemOS returns: { "data": { "groups": [ { "memories": [...] } ] } }
+    data = results.get("data", {}) if isinstance(results, dict) else {}
+    groups = data.get("groups", [])
+
+    for group in groups:
+        for mem in group.get("memories", []):
+            # EverMemOS uses "content" for message text
+            text = (
+                mem.get("content")
+                or mem.get("text")
+                or str(mem)
+            )
+            normalized.append({"text": text})
+
+    state["retrieved_longterm"] = normalized
+    return state
+
+def write_longterm_node(state: MemoryState):
+    client = state["memory_client"]
+    response = state.get("response")
+
+    # Simple heuristic: store assistant responses
+    if response and len(response) > 20:
+        client.write_memory(
+            user_id=state["user_id"],
+            text=response,
+            metadata={"source": "assistant"}
+        )
+
+    return state

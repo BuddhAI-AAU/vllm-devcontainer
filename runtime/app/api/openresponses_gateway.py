@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 router = APIRouter()
 
 VLLM_URL = "http://localhost:8000/v1/chat/completions"
-MODEL = "mistralai/Ministral-3-3B-Reasoning-2512"
+MODEL = "mistralai/Ministral-3-14B-Reasoning-2512"
 
 
 def convert_openresponses_to_chat(messages):

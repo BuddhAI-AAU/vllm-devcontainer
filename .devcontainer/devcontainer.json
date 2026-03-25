@@ -1,7 +1,8 @@
 {
   "name": "BuddhAI-devcontainer",
   "runArgs": [ "--gpus", "all",
-               "--network", "vllm-net"
+               "--network", "vllm-net",
+               "-p", "9000:9000"
  ],
   "build": {
     "dockerfile": "Containerfile",
@@ -14,6 +15,9 @@
   
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "mounts": ["source=/home/silentpeak/BuddhAi/Models,target=/Models,type=bind"
+],
+  "forwardPorts": [9000],
 
 
   "remoteUser": "root",
