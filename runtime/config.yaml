@@ -1,4 +1,4 @@
-model: "mistralai/Ministral-3-3B-Reasoning-2512"
+model: "mistralai/Ministral-3-14B-Reasoning-2512"
 hf-token: "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"
 port: 8000 
 #KV settings

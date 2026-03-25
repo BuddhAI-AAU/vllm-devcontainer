@@ -1,0 +1,52 @@
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: pg-memory
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - vllm-net
+  
+  vllm:
+    image: nvcr.io/nvidia/vllm:26.01-py3
+    command: ["vllm", "serve", "--config", "runtime/config.yaml"]
+    volumes:
+      - ./runtime:/workspace/runtime
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  api:
+      build: .
+      container_name: api
+      ports:
+        - "9000:9000"
+      depends_on:
+        - postgres
+        - vllm
+      environment:
+        DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+        VLLM_URL: http://vllm:8000
+      volumes:
+        - .:/app
+
+
+volumes:
+  pgdata:
+
+networks:
+  vllm-net:
+    external: true
+  
+

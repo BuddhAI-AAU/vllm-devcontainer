@@ -42,17 +42,73 @@ def llm_node(state: MemoryState):
     print(full_output)
 
     # Store assistant message ONLY if not empty
-    if full_output.strip():
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO conversation_memory (user_id, role, content)
-                VALUES (%s, %s, %s)
-            """, (user_id, "assistant", full_output))
-            conn.commit()
+#    if full_output.strip():
+ #       with conn.cursor() as cur:
+  #          cur.execute("""
+   #             INSERT INTO conversation_memory (user_id, role, content, time_stamp)
+    #            VALUES (%s, %s, %s, NOW())
+     #       """, (user_id, "assistant", full_output))
+      #      conn.commit()
 
-        print("\n=== LLM NODE STORED ASSISTANT MESSAGE ===")
-        print(full_output)
-    else:
-        print("\n=== LLM NODE: EMPTY ASSISTANT MESSAGE SKIPPED ===")
+    print("\n=== LLM NODE STORED ASSISTANT MESSAGE ===")
+    print(full_output)
+
+        # Remove old messages (keep last 10)
+#        with conn.cursor() as cur:
+ #           cur.execute("""
+  #              DELETE FROM conversation_memory
+   #             WHERE user_id = %s
+    #            AND id NOT IN (
+     #               SELECT id
+      #              FROM conversation_memory
+       #             WHERE user_id = %s
+        #            ORDER BY id DESC
+         #           LIMIT 10
+          #      )
+           # """, (user_id, user_id))
+            #conn.commit()
+
+
+    #else:
+     #   print("\n=== LLM NODE: EMPTY ASSISTANT MESSAGE SKIPPED ===")
+
+
 
     return {"response": full_output}
+
+
+def write_turn_node(state: MemoryState):
+    user_id = state["user_id"]
+    user_input = state["input"]
+    assistant_output = state["response"]
+    time_stamp = state["time_stamp"]
+
+    # Skip storing empty assistant messages
+    if not assistant_output.strip():
+        return state
+
+    with conn.cursor() as cur:
+        # get last turn_id
+        cur.execute("""
+            SELECT MAX(turn_id) 
+            FROM conversation_memory 
+            WHERE user_id = %s
+        """, (user_id,))
+        last_turn = cur.fetchone()[0] or 0 #retrieves the result of SQL quere
+        turn_id = last_turn + 1
+
+        # store user message
+        cur.execute("""
+            INSERT INTO conversation_memory (user_id, turn_id, role, content, time_stamp)
+            VALUES (%s, %s, 'user', %s, %s)
+        """, (user_id, turn_id, user_input, time_stamp))
+
+        # store assistant message
+        cur.execute("""
+            INSERT INTO conversation_memory (user_id, turn_id, role, content, time_stamp)
+            VALUES (%s, %s, 'assistant', %s, %s)
+        """, (user_id, turn_id, assistant_output, time_stamp))
+
+        conn.commit()
+
+    return state
