@@ -15,13 +15,18 @@
   
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
-  "mounts": ["source=/home/silentpeak/BuddhAi/Models,target=/Models,type=bind"
+  "mounts": [
+    "source=/home/silentpeak/BuddhAi/Models,target=/Models,type=bind",
+    "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind"
 ],
+
+
+"remoteEnv": {
+    "SSH_AUTH_SOCK": "/ssh-agent"
+  },
+
   "forwardPorts": [9000],
-
-
   "remoteUser": "root",
-
   
   
 
