@@ -54,31 +54,25 @@ def postgres_memory_node(state: MemoryState):
     print("\n=== MEMORY NODE HISTORY LOADED FROM DB ===")
     print(history)
 
-    # 2. Append the new user message
-    #history.append({"role": "user", "content": user_input})        maybe not needed due to adding it in the graph input now, we could avoid adding it twice
-    
-    # 3. Save the new message/insertion into SQL
-#    with conn.cursor() as cur:
- #       cur.execute("""
-  #          INSERT INTO conversation_memory (user_id, role, content, time_stamp)
-   #         VALUES (%s, %s, %s, %s)
-    #    """, (user_id, "user", user_input, time_stamp))
-     #   conn.commit()
 
-    #remove messages older than 10
-#    with conn.cursor() as cur:
- #       cur.execute("""
-  #          DELETE FROM conversation_memory
-   #         WHERE user_id = %s
-    #        AND time_stamp NOT IN (
-     #           SELECT time_stamp
-      #          FROM conversation_memory
-       #         WHERE user_id = %s
-        #        ORDER BY time_stamp DESC
-         #       LIMIT 10
-          #  )
-#        """, (user_id, user_id))
-#        conn.commit()
+#this deletes user conversations older than x (int in limit), does it pairwise based on turn_id
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            DELETE FROM conversation_memory
+            WHERE user_id = %s
+            AND turn_id NOT IN (
+                SELECT turn_id FROM (
+                    SELECT DISTINCT turn_id
+                    FROM conversation_memory
+                    WHERE user_id = %s
+                    ORDER BY turn_id DESC
+                    LIMIT 10
+                ) AS keepers
+            )
+        """, (user_id, user_id))
+        conn.commit()
+
 
     print("\n=== MEMORY NODE OUTPUT ===")
     print({
@@ -175,7 +169,7 @@ def write_longterm_node(state: MemoryState):
     client = state["memory_client"]
     response = state.get("response")
 
-    # Simple heuristic: store assistant responses
+    # Store assistant responses
     if response and len(response) > 20:
         client.write_memory(
             user_id=state["user_id"],
