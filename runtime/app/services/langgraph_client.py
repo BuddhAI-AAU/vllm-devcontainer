@@ -13,11 +13,30 @@ while True:
     if not user_text.strip():
         break
 
-#payload we pass to the server.py
+
+    user_id = "lynch"
+    MODEL = "mistralai/Ministral-3-14B-Reasoning-2512"  #model vLLM should load. From Hugging Face
+
+    SYSTEM_PROMPT =    ("You are a tutor. Your name is BuddhAi. Base your personality on Buddha" 
+                    "Use gentle Socratic questioning to guide the student, but keep answers clear and factual." 
+                    "With every question, give specific answers that are satisfying, then proceed with socratic questioning"
+                    "Do not repeat the user's question. Do not roleplay. Do not output XML tags.")
+
+    #paramterts sent to vLLM
+    params = {
+        "model": MODEL,
+        "max_tokens": 500,
+        "temperature": 0.7,
+        "stream": True
+    }
+
+    #payload we pass to the server.py
     payload = {
-        "user_id": "user123",
+        "user_id": user_id,
         "time_stamp": time_stamp,
-        "message": user_text
+        "message": user_text,
+        "system_prompt": SYSTEM_PROMPT,
+        "params": params
     }
 
     #inference time start

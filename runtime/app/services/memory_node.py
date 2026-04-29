@@ -7,7 +7,11 @@ from services.longterm_mem import MemoryClient
 DATABASE_URL = "postgresql://postgres:postgres@postgres:5432/postgres"
 
 parsed = urlparse(DATABASE_URL)
-SYSTEM_PROMPT =    ("You are a tutor. Your name is BuddhAi. Base your personality on Buddha" 
+
+
+#outcommented as the prompt comes from client now
+
+DEFAULT_SYSTEM_PROMPT =    ("You are a tutor. Your name is BuddhAi. Base your personality on Buddha" 
                     "Use gentle Socratic questioning to guide the student, but keep answers clear and factual." 
                     "With every question, give specific answers that are satisfying, then proceed with socratic questioning"
                     "Do not repeat the user's question. Do not roleplay. Do not output XML tags.")
@@ -27,10 +31,12 @@ class MemoryState(TypedDict):
     input: str 
     time_stamp: str
     #memory_client: MemoryClient #EverMemOS
+    system_prompt: str
+    params: dict
     history: List[Dict[str, str]]
     payload: NotRequired[dict] 
     response: NotRequired[str]
-    retrieved_longterm: NotRequired[List[dict]]
+    #retrieved_longterm: NotRequired[List[dict]]
 
 def postgres_memory_node(state: MemoryState):
 
@@ -98,28 +104,31 @@ def prompt_builder_node(state: MemoryState):
 
     messages = []
 
+
+    system_prompt = state.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+
     # 1. System prompt
     messages.append({
         "role": "system",
         "content": [
-            {"type": "input_text", "text": SYSTEM_PROMPT}
+            {"type": "input_text", "text": system_prompt}
         ]
     })
-
+    """"
      # Inject long-term memory
-   # if longterm:
-  #      mem_text = "\n".join([m["text"] for m in longterm])
-   #     messages.append({
-   #         "role": "system",
-    #        "content": [
-     #           {"type": "input_text", "text": f"Relevant memories:\n{mem_text}"}
-    #        ]
-    #    })
-
+    if longterm:
+        mem_text = "\n".join([m["text"] for m in longterm])
+        messages.append({
+            "role": "system",
+            "content": [
+                {"type": "input_text", "text": f"Relevant memories:\n{mem_text}"}
+            ]
+        })
+    """
     # 2. Add each message from history
     for msg in history:
         messages.append({
-            "role": msg["role"],
+           "role": msg["role"],
             "content": [
                 {"type": "input_text", "text": msg["content"]}
             ]
@@ -178,3 +187,8 @@ def write_longterm_node(state: MemoryState):
         )
 
     return state
+
+#here just to run everMem without STM
+def init_memory_client_node(state):
+    return {"memory_client": MemoryClient()}
+

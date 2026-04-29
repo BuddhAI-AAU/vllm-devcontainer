@@ -3,7 +3,7 @@ hf-token: "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"
 port: 8000 
 #KV settings
 kv-cache-dtype: "fp8"                                  #type of the KV cache, adjust based on your GPU capabilities and model requirements. NVFP8 can provide better performance on NVIDIA GPUs that support it, while FP16 is more widely supported but may be slower.
-gpu-memory-utilization: 0.8                            #controls how much of the GPU memory to utilize. Higher values can improve performance but may lead to out-of-memory errors if set too high.
+gpu-memory-utilization: 0.6                            #controls how much of the GPU memory to utilize. Higher values can improve performance but may lead to out-of-memory errors if set too high.
 #block-size: 32                                         #Size of a contiguous cache block in number of tokens, 32 is max for CUDA devices. Larger block sizes can improve throughput but may increase memory usage and latency for small inputs.
 enable-prefix-caching: true                            #When True skip prompt prefill, latency reduction for repeated prompts, at the cost of higher memory usage.
 

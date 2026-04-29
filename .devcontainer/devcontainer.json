@@ -2,7 +2,9 @@
   "name": "BuddhAI-devcontainer",
   "runArgs": [ "--gpus", "all",
                "--network", "vllm-net",
-               "-p", "9000:9000"
+               "-p", "9000:9000",
+               "-p", "18000:18000",
+               "-p", "12000:12000"
  ],
   "build": {
     "dockerfile": "Containerfile",
@@ -25,7 +27,7 @@
     "SSH_AUTH_SOCK": "/ssh-agent"
   },
 
-  "forwardPorts": [9000],
+  "forwardPorts": [9000, 8000, 12000],
   "remoteUser": "root",
   
   

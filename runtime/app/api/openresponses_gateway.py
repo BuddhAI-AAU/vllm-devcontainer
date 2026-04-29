@@ -28,18 +28,26 @@ def convert_openresponses_to_chat(messages):
 async def get_open_responses(request: Request):
     body = await request.json()
 
-    # Convert full OpenResponses conversation → prompt
+    # Convert full OpenResponses conversation -> prompt
     #messages = build_prompt_from_openresponses(body.get("input", []))
     chat_messages = convert_openresponses_to_chat(body["input"])
 
-#The payload sent to vllm. containing which mode to use, the prompt + Memory, how many tokens it can generate, temp and tells it to stream
+    #read parameters from client
+    params = body.get("params", {})
+
+    print("\n=== CLIENT PARAMS RECEIVED ===")
+    print(json.dumps(params, indent=2))
+
+    #Build the payload from client data for processing through the pipeline, ending up at vllm.
     vllm_payload = {
-        "model": MODEL,
+        "model": params.get("model", MODEL),
         "messages": chat_messages,
-        "max_tokens": 500,
-        "temperature": 0.7,
-        "stream": True
+        "max_tokens":params.get("max_tokens", 500),
+        "temperature":params.get("temperature", 0.7),
+        "stream":params.get("stream", True)
     }
+    print("\n=== VLLM PAYLOAD SENT TO MODEL - FROM GATEWAY ===")
+    print(json.dumps(vllm_payload, indent=2))
 
     async with httpx.AsyncClient() as client:
         vllm_response = await client.post(VLLM_URL, json=vllm_payload, timeout=None)
