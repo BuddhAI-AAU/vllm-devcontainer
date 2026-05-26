@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime, timedelta, timezone
 import time
+import sounddevice
 
 
 #server.py API
@@ -47,9 +48,29 @@ while True:
     #inference time end
     IT_end = time.time()
 
+    #prevents loop from breaking if we get a non-200 status
+    if response.status_code != 200:             
+        print("Server error:", response.text)
+        continue
+
+
     print("Inference time:", round(IT_end - IT_start, 3), "seconds")
     print()
     print()
     data = response.json()
     print("Model:", data["response"])
+
+    # Play audio if available
+    if data.get("audio_base64"):
+        import base64, io, sounddevice as sd, soundfile as sf
+
+        audio_bytes = base64.b64decode(data["audio_base64"])
+        audio_array, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32")
+
+        print("[Playing audio...]")
+        sd.play(audio_array, sr)
+        sd.wait()
+    else:
+        print("[No audio]")
+
     print(time_stamp)

@@ -1,6 +1,8 @@
 import requests
 import json
 from services.memory_node import MemoryState, conn
+from services.tts_client import synthesize_tts
+
 
 BASE_URL = "http://localhost:9000/responses"
 
@@ -123,4 +125,10 @@ def write_turn_node(state: MemoryState):
 
         conn.commit()
 
+    return state
+
+def tts_node(state):
+    text = state["response"]
+    audio_bytes = synthesize_tts(text)
+    state["tts_audio"] = audio_bytes
     return state
