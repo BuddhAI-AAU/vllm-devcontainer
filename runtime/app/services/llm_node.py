@@ -127,8 +127,11 @@ def write_turn_node(state: MemoryState):
 
     return state
 
+#deprecated
+"""
 def tts_node(state):
     text = state["response"]
     audio_bytes = synthesize_tts(text)
     state["tts_audio"] = audio_bytes
     return state
+"""
