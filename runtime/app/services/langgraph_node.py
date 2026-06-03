@@ -45,15 +45,16 @@ def run_chat(user_id: str, user_text: str, time_stamp: str, system_prompt: str, 
     print("\n=== CLIENT → GRAPH INPUT ===")
     print({"user_id": user_id, "input": user_text, "time_stamp": time_stamp, "system_prompt": system_prompt, "params": params})
     
-    
+    # Normalize input into message list
+    messages = [{"role": "user", "content": user_text}]
+
     result = graph.invoke({
         "user_id": user_id,
-        "input": user_text,
+        "input": messages,
         "time_stamp": time_stamp,
         "system_prompt": system_prompt,
         "params": params,
         "history": [],
-        #"memory_client": memory_client #EverMemOS
     })
 
     text = result["response"]
@@ -64,11 +65,7 @@ def run_chat(user_id: str, user_text: str, time_stamp: str, system_prompt: str, 
     print("\n=== GRAPH → CLIENT OUTPUT ===")
     print(result)
 
-    #return result["response"] from before tts
-
     return {
         "response": text,
         "audio_base64": audio_b64
     }
-
-
