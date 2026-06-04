@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from services.langgraph_node import run_chat
+from services.perf_logger import log_perf   # <-- CSV logger
 import base64
 import httpx
 from api.openresponses_gateway import router as responses_router
@@ -8,6 +9,7 @@ import io
 import wave
 import uvicorn
 import asyncio
+import time
 
 app = FastAPI(title="LangGraph + vLLM API")
 app.include_router(responses_router)
@@ -16,6 +18,11 @@ TTS_URL = "http://localhost:7000/v1/audio/speech"
 WHISPER_URL = "http://localhost:7001/transcribe"
 
 audio_buffers: dict[str, list[bytes]] = {}
+
+#--------------Latency report------------
+
+def now():
+    return time.perf_counter()
 
 # ---------------- Models ----------------
 
@@ -36,6 +43,7 @@ class ChatResponse(BaseModel):
 # ---------------- TTS -------------------
 
 def run_tts(text: str) -> str | None:
+    t0 = now()
     try:
         payload = {
             "input": text,
@@ -45,7 +53,14 @@ def run_tts(text: str) -> str | None:
         }
         resp = httpx.post(TTS_URL, json=payload, timeout=120.0)
         resp.raise_for_status()
-        return base64.b64encode(resp.content).decode("utf-8")
+        audio = base64.b64encode(resp.content).decode("utf-8")
+        t_tts = now() - t0
+        print(f"[TIMING] TTS: {t_tts:.3f} sec")
+
+        # CSV log
+        log_perf("server", "tts", t_tts)
+
+        return audio
     except Exception as e:
         print("[TTS ERROR]", e)
         return None
@@ -63,14 +78,22 @@ async def run_stt(audio_bytes: bytes) -> str:
     wav_buf.seek(0)
     files = {"file": ("audio.wav", wav_buf.read(), "audio/wav")}
 
+    t0 = now()
     async with httpx.AsyncClient() as client:
         resp = await client.post(WHISPER_URL, files=files, timeout=60.0)
         resp.raise_for_status()
-        return resp.json().get("text", "")
+        text = resp.json().get("text", "")
+    t_stt = now() - t0
+
+    print(f"[TIMING] STT: {t_stt:.3f} sec")
+    log_perf("server", "stt", t_stt)
+
+    return text
 
 # ---------------- Text Handler -------------------
 
 def handler_text_input(payload: ChatRequest) -> ChatResponse:
+    t0 = now()
     output = run_chat(
         payload.user_id,
         payload.message,
@@ -78,8 +101,13 @@ def handler_text_input(payload: ChatRequest) -> ChatResponse:
         payload.system_prompt,
         payload.params
     )
+    t_graph = now() - t0
+
+    print(f"[TIMING] LangGraph: {t_graph:.3f} sec")
+    log_perf(payload.user_id, "langgraph_outer", t_graph)
 
     text = output["response"]
+
     audio_b64 = run_tts(text) if payload.tts_enabled else None
 
     return ChatResponse(response=text, audio_base64=audio_b64)
@@ -141,24 +169,34 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             message = await websocket.receive_json()
             msg_type = message.get("type")
+            user_id = message.get("user_id", "unknown")
 
             # -------- TEXT INPUT --------
             if msg_type == "text":
+                t0 = now()
                 output = await asyncio.to_thread(
                     run_chat,
-                    message["user_id"],
+                    user_id,
                     message["text"],
                     message["time_stamp"],
                     message.get("system_prompt", ""),
                     message.get("params", {})
                 )
+                t_graph = now() - t0
 
-                # SEND TTS + TEXT
+                print(f"[TIMING] LangGraph: {t_graph:.3f} sec")
+                log_perf(user_id, "langgraph_outer", t_graph)
+
+                t1 = now()
                 await websocket.send_json({
                     "type": "llm_response",
                     "text": output["response"],
                     "audio_base64": output.get("audio_base64")
                 })
+                t_ws = now() - t1
+
+                print(f"[TIMING] WS Send: {t_ws:.3f} sec")
+                log_perf(user_id, "ws_send", t_ws)
 
             # -------- AUDIO CHUNK --------
             elif msg_type == "audio_chunk":
@@ -166,6 +204,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # -------- END OF SPEECH --------
             elif msg_type == "audio_end":
+                t_total_start = now()
+
                 wav_buf = io.BytesIO()
                 with wave.open(wav_buf, "wb") as wf:
                     wf.setnchannels(1)
@@ -174,12 +214,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     wf.writeframes(audio_buffer)
 
                 wav_buf.seek(0)
-                files = {"file": ("audio.wav", wav_buf.read(), "audio/wav")}
 
-                async with httpx.AsyncClient() as client:
-                    resp = await client.post(WHISPER_URL, files=files)
-                    stt_text = resp.json().get("text", "")
-
+                # STT
+                stt_text = await run_stt(bytes(audio_buffer))
                 audio_buffer = bytearray()
 
                 await websocket.send_json({
@@ -188,7 +225,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
 
                 synthetic_payload = ChatRequest(
-                    user_id=message["user_id"],
+                    user_id=user_id,
                     time_stamp=message["time_stamp"],
                     message=stt_text,
                     system_prompt=message["system_prompt"],
@@ -197,14 +234,30 @@ async def websocket_endpoint(websocket: WebSocket):
                     tts_enabled=True
                 )
 
+                # LangGraph + TTS
+                t1 = now()
                 output = await asyncio.to_thread(handler_text_input, synthetic_payload)
+                t_graph = now() - t1
 
-                # SEND TTS + TEXT
+                print(f"[TIMING] LangGraph: {t_graph:.3f} sec")
+                log_perf(user_id, "langgraph_outer", t_graph)
+
+                # WS send
+                t2 = now()
                 await websocket.send_json({
                     "type": "llm_response",
                     "text": output.response,
                     "audio_base64": output.audio_base64
                 })
+                t_ws = now() - t2
+
+                print(f"[TIMING] WS Send: {t_ws:.3f} sec")
+                log_perf(user_id, "ws_send", t_ws)
+
+                # Total
+                t_total = now() - t_total_start
+                print(f"[TIMING] TOTAL ROUND TRIP: {t_total:.3f} sec\n")
+                log_perf(user_id, "round_trip", t_total)
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")

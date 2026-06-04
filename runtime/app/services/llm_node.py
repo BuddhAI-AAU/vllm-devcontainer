@@ -1,14 +1,17 @@
 import requests
 import json
+import time
 from services.memory_node import MemoryState, conn
-from services.tts_client import synthesize_tts
-
+from services.perf_logger import log_perf   # <-- CSV logger
 
 BASE_URL = "http://localhost:9000/responses"
 
-#group test lynch
+def now():
+    return time.perf_counter()
 
 def llm_node(state: MemoryState):
+    t0 = now()
+
     payload = state["payload"]
     user_id = state["user_id"]
 
@@ -55,6 +58,17 @@ def llm_node(state: MemoryState):
         """, (user_id, user_id))
         conn.commit()
 
+    dt = now() - t0
+    print(f"[TIMING] Node llm: {dt:.3f} sec")
+
+    # ---- CSV LOGGING ----
+    log_perf(
+        user_id=user_id,
+        stage="llm_node",
+        duration=dt,
+        extra=f"model={params.get('model')}"
+    )
+
     return {"response": full_output}
 
 
@@ -65,29 +79,26 @@ def _normalize_to_string(x: Any) -> str:
     if isinstance(x, str):
         return x
     if isinstance(x, list):
-        # list of {"role": "...", "content": "..."}
         return "\n".join([m.get("content", "") for m in x if isinstance(m, dict)])
     if isinstance(x, dict):
-        # single {"role": "...", "content": "..."} case
         return x.get("content", str(x))
     return str(x)
 
 
 def write_turn_node(state: MemoryState):
+    t0 = now()
+
     user_id = state["user_id"]
     user_input_raw = state["input"]
     assistant_output = state["response"]
     time_stamp = state["time_stamp"]
 
-    # normalize input to plain text for storage
     user_input = _normalize_to_string(user_input_raw)
 
-    # Skip storing empty assistant messages
     if not assistant_output or not assistant_output.strip():
         return state
 
     with conn.cursor() as cur:
-        # get last turn_id
         cur.execute("""
             SELECT MAX(turn_id) 
             FROM conversation_memory 
@@ -96,13 +107,11 @@ def write_turn_node(state: MemoryState):
         last_turn = cur.fetchone()[0] or 0
         turn_id = last_turn + 1
 
-        # store user message
         cur.execute("""
             INSERT INTO conversation_memory (user_id, turn_id, role, content, time_stamp)
             VALUES (%s, %s, 'user', %s, %s)
         """, (user_id, turn_id, user_input, time_stamp))
 
-        # store assistant message
         cur.execute("""
             INSERT INTO conversation_memory (user_id, turn_id, role, content, time_stamp)
             VALUES (%s, %s, 'assistant', %s, %s)
@@ -110,13 +119,14 @@ def write_turn_node(state: MemoryState):
 
         conn.commit()
 
-    return state
+    dt = now() - t0
+    print(f"[TIMING] Node write_turn: {dt:.3f} sec")
 
-#deprecated
-"""
-def tts_node(state):
-    text = state["response"]
-    audio_bytes = synthesize_tts(text)
-    state["tts_audio"] = audio_bytes
+    # ---- CSV LOGGING ----
+    log_perf(
+        user_id=user_id,
+        stage="write_turn",
+        duration=dt
+    )
+
     return state
-"""
