@@ -3,7 +3,7 @@ import os
 import time
 from threading import Lock
 
-LOG_PATH = "performance_log.csv"
+LOG_PATH = "\csv\performance_log.csv"
 _lock = Lock()
 
 # Ensure header exists

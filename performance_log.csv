@@ -1,5 +1,0 @@
-timestamp,user_id,stage,duration_sec,extra
-2026-06-09 13:35:23,server,stt,0.826605,
-2026-06-09 13:35:32,gateway,vllm_stream,8.849281,
-2026-06-09 13:35:32,lynch,llm_tts_stream,8.865989,
-2026-06-09 13:35:32,lynch,round_trip,9.721889,
