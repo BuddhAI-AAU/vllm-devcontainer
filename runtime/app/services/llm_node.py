@@ -24,7 +24,7 @@ def llm_node(state: MemoryState):
         messages = raw_input
 
     params = state.get("params", {})
-    params["stream"] = False
+    params["stream"] = True   # <-- IMPORTANT
 
     gateway_payload = {
         "input": messages,
@@ -34,16 +34,23 @@ def llm_node(state: MemoryState):
     print("\n=== LLM NODE PAYLOAD SENT TO GATEWAY ===")
     print(json.dumps(gateway_payload, indent=2))
 
-    r = requests.post(BASE_URL, json=gateway_payload, timeout=120)
-    r.raise_for_status()
+    # ---- STREAMING REQUEST ----
+    full_output = ""
 
-    data = r.json()
-    full_output = data.get("response", "")
+    with requests.post(BASE_URL, json=gateway_payload, stream=True) as r:
+        r.raise_for_status()
+
+        for line in r.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+
+            # vLLM gateway sends raw text chunks
+            full_output += line
 
     print("\n=== LLM NODE STORED ASSISTANT MESSAGE ===")
     print(full_output)
 
-    # Trim old messages
+    # ---- Trim old messages ----
     with conn.cursor() as cur:
         cur.execute("""
             DELETE FROM conversation_memory
@@ -122,7 +129,6 @@ def write_turn_node(state: MemoryState):
     dt = now() - t0
     print(f"[TIMING] Node write_turn: {dt:.3f} sec")
 
-    # ---- CSV LOGGING ----
     log_perf(
         user_id=user_id,
         stage="write_turn",

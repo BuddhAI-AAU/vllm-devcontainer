@@ -1,16 +1,5 @@
 timestamp,user_id,stage,duration_sec,extra
-2026-06-04 08:06:13,server,stt,0.674514,
-2026-06-04 08:06:13,lynch,node_memory,0.001970,
-2026-06-04 08:06:13,lynch,node_prompt_builder,0.000005,
-2026-06-04 08:06:52,gateway,vllm,39.063505,model=mistralai/Ministral-3-14B-Reasoning-2512
-2026-06-04 08:07:12,gateway,gateway_total,59.092314,
-2026-06-04 08:07:12,lynch,llm_node,59.109687,model=mistralai/Ministral-3-14B-Reasoning-2512
-2026-06-04 08:07:12,lynch,node_llm,59.110176,
-2026-06-04 08:07:12,lynch,write_turn,0.003253,
-2026-06-04 08:07:12,lynch,node_write_turn,0.003359,
-2026-06-04 08:07:12,lynch,graph_total,59.118700,
-2026-06-04 08:07:12,lynch,langgraph_outer,59.119976,
-2026-06-04 08:08:29,server,tts,76.715749,
-2026-06-04 08:08:29,lynch,langgraph_outer,135.836463,
-2026-06-04 08:08:30,lynch,ws_send,1.366336,
-2026-06-04 08:08:30,lynch,round_trip,137.877955,
+2026-06-09 13:35:23,server,stt,0.826605,
+2026-06-09 13:35:32,gateway,vllm_stream,8.849281,
+2026-06-09 13:35:32,lynch,llm_tts_stream,8.865989,
+2026-06-09 13:35:32,lynch,round_trip,9.721889,

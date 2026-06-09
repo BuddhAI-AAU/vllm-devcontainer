@@ -5,9 +5,7 @@ from services.memory_node import (
     prompt_builder_node,
 )
 from services.llm_node import llm_node, write_turn_node
-from services.longterm_mem import MemoryClient
 from services.perf_logger import log_perf   # <-- CSV logger
-import base64
 import time
 
 def now():
@@ -49,7 +47,6 @@ builder.add_edge("llm", "write_turn")
 builder.set_finish_point("write_turn")
 
 graph = builder.compile()
-memory_client = MemoryClient()
 
 # ---------------- RUN CHAT ----------------
 
@@ -63,6 +60,9 @@ def run_chat(user_id: str, user_text: str, time_stamp: str, system_prompt: str, 
         "system_prompt": system_prompt,
         "params": params
     })
+
+    # ---- FORCE STREAMING ----
+    params["stream"] = True
 
     messages = [{"role": "user", "content": user_text}]
 
@@ -89,13 +89,12 @@ def run_chat(user_id: str, user_text: str, time_stamp: str, system_prompt: str, 
 
     # ---- Extract output ----
     text = result["response"]
-    audio = result.get("tts_audio")
-    audio_b64 = base64.b64encode(audio).decode() if audio else None
 
     print("\n=== GRAPH → CLIENT OUTPUT ===")
     print(result)
 
+    # ---- No TTS here (TTS is only in WebSocket streaming path) ----
     return {
         "response": text,
-        "audio_base64": audio_b64
+        "audio_base64": None
     }
