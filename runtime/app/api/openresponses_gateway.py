@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 import json
 import httpx
-from fastapi.responses import StreamingResponse
+import time
+from scripts.perf_logger import log_perf   # CSV logger
 
 router = APIRouter()
 
 VLLM_URL = "http://localhost:8000/v1/chat/completions"
 MODEL = "mistralai/Ministral-3-14B-Reasoning-2512"
 
+def now():
+    return time.perf_counter()
 
 def convert_openresponses_to_chat(messages):
     chat = []
@@ -23,46 +27,54 @@ def convert_openresponses_to_chat(messages):
     return chat
 
 
-
-@router.post("/responses", response_class=StreamingResponse)
+@router.post("/responses")
 async def get_open_responses(request: Request):
+
     body = await request.json()
 
-    # Convert full OpenResponses conversation → prompt
-    #messages = build_prompt_from_openresponses(body.get("input", []))
     chat_messages = convert_openresponses_to_chat(body["input"])
+    params = body.get("params", {})
 
-#The payload sent to vllm. containing which mode to use, the prompt + Memory, how many tokens it can generate, temp and tells it to stream
+    # ---- Build STREAMING vLLM payload ----
     vllm_payload = {
-        "model": MODEL,
+        "model": params.get("model", MODEL),
         "messages": chat_messages,
-        "max_tokens": 500,
-        "temperature": 0.7,
+        "max_tokens": params.get("max_tokens", 500),
+        "temperature": params.get("temperature", 0.7),
         "stream": True
     }
 
-    async with httpx.AsyncClient() as client:
-        vllm_response = await client.post(VLLM_URL, json=vllm_payload, timeout=None)
+    async def token_stream():
+        t0 = now()
 
-    assistant_buffer = ""
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream("POST", VLLM_URL, json=vllm_payload) as resp:
 
-    async def event_generator():
-        nonlocal assistant_buffer
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
 
-        async for line in vllm_response.aiter_lines():
-            if line.startswith("data: "):
-                data = line[len("data: "):]
+                    if not line.startswith("data: "):
+                        continue
 
-                if data == "[DONE]":
-                    yield "event: response.completed\ndata: {}\n\n"
-                    break
+                    data = line[len("data: "):].strip()
 
-                chunk = json.loads(data)
-                delta_text = chunk["choices"][0]["delta"].get("content", "")
+                    if data == "[DONE]":
+                        break
 
-                assistant_buffer += delta_text
+                    try:
+                        obj = json.loads(data)
+                        delta = obj["choices"][0]["delta"].get("content", "")
+                        if delta:
+                            # Yield raw token text
+                            yield delta
+                    except Exception:
+                        continue
 
-                event_data = json.dumps({"delta": delta_text})
-                yield f"event: response.output_text.delta\ndata: {event_data}\n\n"
+        # ---- Log streaming duration ----
+        t_vllm = now() - t0
+        print(f"[TIMING] vLLM_stream: {t_vllm:.3f} sec")
+        log_perf("gateway", "vllm_stream", t_vllm)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    # Return streaming text/plain response
+    return StreamingResponse(token_stream(), media_type="text/plain")
