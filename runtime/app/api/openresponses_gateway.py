@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 import json
 import httpx
 import time
-from services.perf_logger import log_perf   # CSV logger
+from scripts.perf_logger import log_perf   # CSV logger
 
 router = APIRouter()
 

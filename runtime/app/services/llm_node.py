@@ -1,8 +1,8 @@
 import requests
 import json
 import time
-from services.memory_node import MemoryState, conn
-from services.perf_logger import log_perf   # <-- CSV logger
+from runtime.app.services.memory_node import MemoryState, conn
+from scripts.perf_logger import log_perf   # <-- CSV logger
 
 BASE_URL = "http://localhost:9000/responses"
 

@@ -1,20 +1,21 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from services.langgraph_node import run_chat
-from services.perf_logger import log_perf   # <-- CSV logger
+from runtime.app.services.langgraph_node import run_chat
+from scripts.perf_logger import log_perf
 import base64
 import httpx
-from api.openresponses_gateway import router as responses_router
+from runtime.app.api.openresponses_gateway import router as responses_router
 import io
 import wave
 import uvicorn
 import asyncio
 import time
+import websockets
+import json
 
 app = FastAPI(title="LangGraph + vLLM API")
 app.include_router(responses_router)
 
-TTS_URL = "http://localhost:7000"
 WHISPER_URL = "http://localhost:7001/transcribe"
 
 audio_buffers: dict[str, list[bytes]] = {}
@@ -54,56 +55,6 @@ class ChatResponse(BaseModel):
     response: str
     audio_base64: str | None = None
 
-# ---------------- TTS -------------------
-
-def run_tts_auto(
-    text: str,
-    prompt: str | None = None,
-    prompt_audio: str | None = None,
-    instruct: str | None = None,
-    spk_id: str = "default"
-) -> str | None:
-    """
-    Smart TTS router:
-    - If `instruct` is provided → use /tts/instruct
-    - Else → use /tts (zero-shot)
-    """
-    t0 = now()
-
-    try:
-        # --- Instruct TTS mode ---
-        if instruct is not None:
-            payload = {
-                "text": text,
-                "instruct": instruct,
-                "spk_id": spk_id
-            }
-
-            resp = httpx.post(TTS_URL + "/tts/instruct", json=payload, timeout=120.0)
-            resp.raise_for_status()
-
-            audio_b64 = resp.json()["audio"]
-            print(f"[TIMING] TTS (instruct): {now() - t0:.3f} sec")
-            return audio_b64
-
-        # --- Zero-shot TTS mode ---
-        payload = {
-            "text": text,
-            "prompt": prompt or "",
-            "prompt_audio": prompt_audio or "./asset/zero_shot_prompt.wav"
-        }
-
-        resp = httpx.post(TTS_URL + "/tts", json=payload, timeout=120.0)
-        resp.raise_for_status()
-
-        audio_b64 = resp.json()["audio"]
-        print(f"[TIMING] TTS (zero-shot): {now() - t0:.3f} sec")
-        return audio_b64
-
-    except Exception as e:
-        print("[TTS ERROR]", e)
-        return None
-
 
 # ---------------- STT -------------------
 
@@ -130,7 +81,8 @@ async def run_stt(audio_bytes: bytes) -> str:
 
     return text
 
-# ---------------- Text Handler -------------------
+
+# ---------------- Text Handler (HTTP) -------------------
 
 def handler_text_input(payload: ChatRequest) -> ChatResponse:
     t0 = now()
@@ -148,9 +100,10 @@ def handler_text_input(payload: ChatRequest) -> ChatResponse:
 
     text = output["response"]
 
-    audio_b64 = run_tts_auto(text) if payload.tts_enabled else None
+    audio_b64 = run_tts(text) if payload.tts_enabled else None
 
     return ChatResponse(response=text, audio_base64=audio_b64)
+
 
 # ---------------- Audio Buffer Helpers -------------------
 
@@ -168,6 +121,7 @@ def get_audio_buffer(user_id: str) -> bytes:
 def clear_audio_buffer(user_id: str):
     audio_buffers[user_id] = []
 
+
 # ---------------- HTTP Audio Handlers -------------------
 
 async def handler_audio_stream_input(payload: ChatRequest) -> ChatResponse:
@@ -182,6 +136,32 @@ async def handler_audio_finalize(payload: ChatRequest) -> ChatResponse:
     payload.message = text
     return handler_text_input(payload)
 
+
+#-------------WebSocket TTS client----------------------------
+
+async def tts_stream(phrase: str, instruct: str):
+    uri = "ws://omnivoice:7002"
+
+    async with websockets.connect(uri) as ws:
+        await ws.send(json.dumps({
+            "type": "config",
+            "instruct": instruct
+        }))
+
+        await ws.send(json.dumps({
+            "type": "text_chunk",
+            "text": phrase
+        }))
+
+        await ws.send(json.dumps({"type": "end"}))
+
+        async for msg in ws:
+            data = json.loads(msg)
+            yield data
+            if data.get("final"):
+                break
+
+
 #-------------- streaming LLM + TTS ---------------------------------
 
 async def stream_llm_and_tts(
@@ -190,20 +170,16 @@ async def stream_llm_and_tts(
     user_text: str,
     system_prompt: str,
     params: dict,
+    instruct: str = "male",
 ):
     messages = [
         {
             "role": "user",
-            "content": [
-                {"type": "input_text", "text": user_text}
-            ],
+            "content": [{"type": "input_text", "text": user_text}],
         }
     ]
 
-    body = {
-        "input": messages,
-        "params": params or {},
-    }
+    body = {"input": messages, "params": params or {}}
 
     llm_buffer = ""
     full_text = ""
@@ -214,7 +190,6 @@ async def stream_llm_and_tts(
             async with client.stream("POST", "http://localhost:9000/responses", json=body) as resp:
                 async for chunk in resp.aiter_text():
                     if session.interrupted:
-                        print("Interrupted during LLM stream")
                         return
 
                     if not chunk:
@@ -223,7 +198,6 @@ async def stream_llm_and_tts(
                     llm_buffer += chunk
                     full_text += chunk
 
-                    # Flush every ~0.5 seconds worth of text
                     if len(llm_buffer) > 40 or is_phrase_boundary(llm_buffer):
                         phrase = llm_buffer
                         llm_buffer = ""
@@ -235,36 +209,17 @@ async def stream_llm_and_tts(
                         })
 
                         if session.interrupted:
-                            print("Interrupted before TTS chunk")
                             return
 
-                        async def tts_task(text_chunk: str):
-                            return run_tts_auto(text_chunk)
+                        async for tts_msg in tts_stream(phrase, instruct=instruct):
+                            if session.interrupted:
+                                return
 
-                        session.current_tts_task = asyncio.create_task(
-                            asyncio.to_thread(run_tts_auto, phrase)
-                        )
-                        audio_b64 = await session.current_tts_task
-                        session.current_tts_task = None
-
-                        if session.interrupted:
-                            print("Interrupted after TTS chunk")
-                            return
-
-                        if audio_b64:
                             await websocket.send_json({
                                 "type": "audio_out_chunk",
-                                "audio_base64": audio_b64,
-                                "final": False,
+                                "audio_base64": tts_msg["audio_base64"],
+                                "final": tts_msg["final"],
                             })
-
-        t_llm = now() - t0
-        print(f"[TIMING] LLM+TTS stream: {t_llm:.3f} sec")
-        log_perf(session.user_id, "llm_tts_stream", t_llm)
-
-        if session.interrupted:
-            print("Interrupted after LLM stream")
-            return
 
         if llm_buffer:
             await websocket.send_json({
@@ -272,22 +227,14 @@ async def stream_llm_and_tts(
                 "text": llm_buffer,
                 "final": False,
             })
-            session.current_tts_task = asyncio.create_task(
-                asyncio.to_thread(run_tts_auto, llm_buffer)
-            )
-            audio_b64 = await session.current_tts_task
-            session.current_tts_task = None
 
-            if session.interrupted:
-                print("Interrupted after final TTS chunk")
-                return
-
-            if audio_b64:
+            async for tts_msg in tts_stream(llm_buffer, instruct=instruct):
                 await websocket.send_json({
                     "type": "audio_out_chunk",
-                    "audio_base64": audio_b64,
-                    "final": False,
+                    "audio_base64": tts_msg["audio_base64"],
+                    "final": tts_msg["final"],
                 })
+
             full_text += llm_buffer
 
         await websocket.send_json({
@@ -295,13 +242,11 @@ async def stream_llm_and_tts(
             "text": full_text,
             "final": True,
         })
-        await websocket.send_json({
-            "type": "audio_out_end"
-        })
+        await websocket.send_json({"type": "audio_out_end"})
 
     except asyncio.CancelledError:
-        print("stream_llm_and_tts cancelled")
         return
+
 
 #--------------ws handlers ---------------------------------
 
@@ -355,6 +300,7 @@ async def handle_turn_audio(websocket: WebSocket, session: SessionState, message
             user_text=stt_text,
             system_prompt=message.get("system_prompt", ""),
             params=message.get("params", {}),
+            instruct=message.get("instruct", "male"),
         )
     )
 
@@ -370,6 +316,7 @@ async def handle_turn_audio(websocket: WebSocket, session: SessionState, message
         print(f"[TIMING] TOTAL ROUND TRIP: {t_total:.3f} sec\n")
         log_perf(user_id, "round_trip", t_total)
 
+
 # ---------------- HTTP Endpoint -------------------
 
 @app.post("/chat", response_model=ChatResponse)
@@ -383,6 +330,7 @@ async def chat_endpoint(payload: ChatRequest):
             return await handler_audio_finalize(payload)
         case _:
             return ChatResponse(response="Invalid input_type", audio_base64=None)
+
 
 # ---------------- WebSocket Endpoint -------------------
 

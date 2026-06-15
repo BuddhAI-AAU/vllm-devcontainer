@@ -2,7 +2,7 @@ import subprocess
 
 command = [
     "vllm", "serve", 
-    "--config", "runtime/config.yaml",
+    "--config", "runtime/app/api/config.yaml",
 ]
 
 subprocess.run(command)

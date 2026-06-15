@@ -41,6 +41,14 @@ services:
       volumes:
         - .:/app
 
+  vibevoice:
+    image: vibevoice-server
+    container_name: vibevoice
+    networks:
+      - vllm-net
+    ports:
+      - "8188:8188"
+
 
 volumes:
   pgdata:
