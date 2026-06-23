@@ -15,7 +15,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         tmp.write(await file.read())
         tmp_path = tmp.name
 
-    # Run Whisper
+    # Run Whisper   
     result = model.transcribe(tmp_path)
     text = result["text"]
 

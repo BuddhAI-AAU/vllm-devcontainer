@@ -1,10 +1,8 @@
 import psycopg2
 from urllib.parse import urlparse
-from typing import TypedDict, List, Dict
-from typing import NotRequired
+from typing import TypedDict, List, Dict, NotRequired, Any
 
 DATABASE_URL = "postgresql://postgres:postgres@postgres:5432/postgres"
-
 parsed = urlparse(DATABASE_URL)
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -33,23 +31,29 @@ conn.autocommit = True
 
 class MemoryState(TypedDict):
     user_id: str
-    input: str | list[dict]
+    input: str
     time_stamp: str
     system_prompt: str
     params: dict
     history: List[Dict[str, str]]
-    payload: NotRequired[dict]
     response: NotRequired[str]
 
 
-def postgres_memory_node(state: MemoryState):
-    print("\n=== MEMORY NODE INPUT ===")
-    print(state)
-    user_id = state["user_id"]
-    user_input = state["input"]
-    time_stamp = state["time_stamp"]
+# ---------- UTILITIES ----------
 
-    # 1. Load history
+def _normalize_to_string(x: Any) -> str:
+    if isinstance(x, str):
+        return x
+    if isinstance(x, list):
+        return "\n".join([m.get("content", "") for m in x if isinstance(m, dict)])
+    if isinstance(x, dict):
+        return x.get("content", str(x))
+    return str(x)
+
+
+# ---------- LOAD HISTORY (STREAMING-FRIENDLY) ----------
+
+def load_history(user_id: str, limit: int = 10) -> List[Dict[str, str]]:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -63,11 +67,12 @@ def postgres_memory_node(state: MemoryState):
         rows = cur.fetchall()
 
     history = [{"role": role, "content": content} for role, content in rows]
+    return history[-limit:]
 
-    print("\n=== MEMORY NODE HISTORY LOADED FROM DB ===")
-    print(history)
 
-    # 2. Trim old turns
+# ---------- TRIM HISTORY (KEEP LAST N TURNS) ----------
+
+def trim_history(user_id: str, keep_turns: int = 10) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -79,45 +84,30 @@ def postgres_memory_node(state: MemoryState):
                     FROM conversation_memory
                     WHERE user_id = %s
                     ORDER BY turn_id DESC
-                    LIMIT 10
+                    LIMIT %s
                 ) AS keepers
             )
             """,
-            (user_id, user_id)
+            (user_id, user_id, keep_turns)
         )
         conn.commit()
 
-    print("\n=== MEMORY NODE OUTPUT ===")
-    print({
-        "user_id": user_id,
-        "input": user_input,
-        "history": history
-    })
 
-    return {
-        "user_id": user_id,
-        "input": user_input,
-        "time_stamp": time_stamp,
-        "history": history,
-    }
+# ---------- PROMPT BUILDER FOR STREAMING ----------
 
+def build_messages_with_history(
+    user_id: str,
+    user_input: str,
+    system_prompt: str | None = None,
+    history_limit: int = 10
+) -> List[Dict[str, Any]]:
 
-def normalize_to_string(x):
-    if isinstance(x, str):
-        return x
-    if isinstance(x, list):
-        return "\n".join([m.get("content", "") for m in x])
-    return str(x)
+    history = load_history(user_id, limit=history_limit)
+    system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
 
+    messages: List[Dict[str, Any]] = []
 
-def prompt_builder_node(state: MemoryState):
-    history = state["history"]
-    user_input = state["input"]
-
-    messages = []
-    system_prompt = state.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
-
-    # System prompt
+    # system prompt
     messages.append({
         "role": "system",
         "content": [
@@ -125,7 +115,7 @@ def prompt_builder_node(state: MemoryState):
         ]
     })
 
-    # History
+    # history
     for msg in history:
         messages.append({
             "role": msg["role"],
@@ -134,13 +124,64 @@ def prompt_builder_node(state: MemoryState):
             ]
         })
 
-    # Latest user message
+    # latest user message
     messages.append({
         "role": "user",
         "content": [
-            {"type": "input_text", "text": normalize_to_string(user_input)}
+            {"type": "input_text", "text": _normalize_to_string(user_input)}
         ]
     })
 
-    return {"payload": {"input": messages}}
+    return messages
 
+
+# ---------- WRITE TURN (USER + ASSISTANT) ----------
+
+def write_turn(state: MemoryState) -> MemoryState:
+    user_id = state["user_id"]
+    user_input_raw = state["input"]
+    assistant_output = state.get("response", "")
+    time_stamp = state["time_stamp"]
+
+    user_input = _normalize_to_string(user_input_raw)
+
+    if not assistant_output or not assistant_output.strip():
+        return state
+
+    with conn.cursor() as cur:
+        # compute next turn_id
+        cur.execute(
+            """
+            SELECT MAX(turn_id)
+            FROM conversation_memory
+            WHERE user_id = %s
+            """,
+            (user_id,)
+        )
+        last_turn = cur.fetchone()[0] or 0
+        turn_id = last_turn + 1
+
+        # user message
+        cur.execute(
+            """
+            INSERT INTO conversation_memory (user_id, turn_id, role, content, time_stamp)
+            VALUES (%s, %s, 'user', %s, %s)
+            """,
+            (user_id, turn_id, user_input, time_stamp)
+        )
+
+        # assistant message
+        cur.execute(
+            """
+            INSERT INTO conversation_memory (user_id, turn_id, role, content, time_stamp)
+            VALUES (%s, %s, 'assistant', %s, %s)
+            """,
+            (user_id, turn_id, assistant_output, time_stamp)
+        )
+
+        conn.commit()
+
+    # optional: trim after each write
+    trim_history(user_id, keep_turns=10)
+
+    return state
