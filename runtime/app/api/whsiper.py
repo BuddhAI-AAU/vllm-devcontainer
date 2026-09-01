@@ -6,7 +6,7 @@ import tempfile
 app = FastAPI(title="Whisper STT Service")
 
 # Load Whisper ONCE
-model = whisper.load_model("base.en")
+model = whisper.load_model("turbo")
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
